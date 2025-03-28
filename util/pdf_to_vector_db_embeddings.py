@@ -1,25 +1,30 @@
 import os
 import uuid
 from PyPDF2 import PdfReader
-from transformers import RagTokenizer, RagRetriever
+from transformers import RagTokenizer, RagRetriever, RagSequenceForGeneration
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct
+from qdrant_client.models import PointStruct, VectorParams
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+from sentence_transformers import SentenceTransformer
+
+
 
 # Constants
 QDRANT_URL = "localhost"
 QDRANT_PORT = 6333
 COLLECTION_NAME = "pdf_embeddings"
-MODEL_ID = "facebook/rag-sequence-nq"
+MODEL_ID = "all-MiniLM-L6-v2"
 
-# Initialize Hugging Face RAG model and tokenizer
-tokenizer = RagTokenizer.from_pretrained(MODEL_ID)
-retriever = RagRetriever.from_pretrained(MODEL_ID, index_name="default", use_dummy_dataset=True)
-
-# Initialize the Qdrant client
+# Initialize Qdrant client
 qdrant_client = QdrantClient(QDRANT_URL, port=QDRANT_PORT)
 
-# Flag to ensure collection is checked and created only once
+# Initialize SentenceTransformer model
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+
+
+# Flag to avoid redundant collection checks
 collection_checked = False
 
 
@@ -27,31 +32,26 @@ def ensure_collection_exists(client, collection_name, embedding_size):
     """Checks if the collection exists and creates it if not."""
     global collection_checked
     if collection_checked:
-        return  # Skip if collection has already been checked/created
+        return
 
-    # Get the list of collections using the correct attribute
     collections = client.get_collections().collections
-
-    # Check if the collection exists
     if collection_name not in [col.name for col in collections]:
-        print(f"Collection '{collection_name}' does not exist. Creating it now...")
+        print(f"Creating collection '{collection_name}'...")
         client.create_collection(
             collection_name=collection_name,
-            vectors_config={"size": embedding_size, "distance": "Cosine"}
+            vectors_config=VectorParams(size=embedding_size, distance="Cosine")
         )
         print(f"Collection '{collection_name}' created.")
     else:
         print(f"Collection '{collection_name}' already exists.")
 
-    # Set the flag to True to avoid repeated checks
     collection_checked = True
 
 
 def extract_text_from_pdf(pdf_path):
     """Extracts text from a PDF file."""
     reader = PdfReader(pdf_path)
-    text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
-    return text
+    return "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
 
 
 def split_text(text, chunk_size=500, chunk_overlap=50):
@@ -61,29 +61,25 @@ def split_text(text, chunk_size=500, chunk_overlap=50):
 
 
 def save_to_qdrant(file_name, embedding, page_content, qdrant_client, qdrant_collection):
-    """Saves embeddings to Qdrant database after ensuring the collection exists."""
-    # Ensure the collection exists before inserting data
+    """Saves embeddings to Qdrant database."""
     ensure_collection_exists(qdrant_client, qdrant_collection, len(embedding))
 
-    # Generate a UUID for the point ID
     point_id = str(uuid.uuid4())
 
-    # Create the payload with the page content and other relevant info
     payload = {
         "file": file_name,
-        "page_content": page_content  # Store the actual page content
+        "page_content": page_content
     }
 
-    # Upsert the embedding to the collection along with the payload
     qdrant_client.upsert(
         collection_name=qdrant_collection,
         points=[PointStruct(id=point_id, vector=embedding, payload=payload)]
     )
-    print(f"Embedding for '{file_name}' inserted into the collection with page content.")
+    print(f"Inserted embedding for '{file_name}' into Qdrant.")
 
 
 def process_pdfs(input_folder, output_folder, chunk_size, chunk_overlap):
-    """Processes PDF files by extracting text, generating embeddings, and moving to output folder."""
+    """Processes PDFs: extract text, generate embeddings, and store in Qdrant."""
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -95,18 +91,12 @@ def process_pdfs(input_folder, output_folder, chunk_size, chunk_overlap):
             text = extract_text_from_pdf(pdf_path)
             chunks = split_text(text, chunk_size, chunk_overlap)
 
-            # Save chunks to Qdrant
             for i, chunk in enumerate(chunks):
-                # Generate embeddings using the RAG retriever
-                embedding = retriever.get_embedding(chunk)  # Use RAG-specific embeddings for context
-                page_content = chunk  # The chunk content is the page content
+                embedding = embedding_model.encode(chunk)
+                save_to_qdrant(f"{file}_chunk_{i}", embedding, chunk, qdrant_client, COLLECTION_NAME)
 
-                # Save embedding to Qdrant with page content as part of the payload
-                save_to_qdrant(f"{file}_chunk_{i}", embedding, page_content, qdrant_client, COLLECTION_NAME)
-
-            # Move the original PDF to output folder
             os.rename(pdf_path, os.path.join(output_folder, file))
-            print(f"Processed {file} and moved to {output_folder}")
+            print(f"Moved {file} to {output_folder}")
 
 
 if __name__ == "__main__":
@@ -114,7 +104,5 @@ if __name__ == "__main__":
     OUTPUT_FOLDER = "pdf_dump"
     CHUNK_SIZE = 500
     CHUNK_OVERLAP = 50
-    COLLECTION_NAME = "pdf_embeddings"
 
-    # Process PDFs
     process_pdfs(INPUT_FOLDER, OUTPUT_FOLDER, CHUNK_SIZE, CHUNK_OVERLAP)
