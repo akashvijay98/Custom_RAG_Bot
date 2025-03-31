@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from similarity_search_using_vector_db import query_vector_db
+from similarity_search_using_vector_db import query_vector_db, generate_response
 
 # Initialize the Flask app
 app = Flask(__name__)
@@ -16,7 +16,6 @@ def query():
     if not query_text:
         return jsonify({"error": "Query is required"}), 400
 
-    # Get the similarity search results
     try:
         results = query_vector_db(query_text)
         # Convert LangChain Document objects to JSON-serializable format
@@ -32,25 +31,22 @@ def query():
         return jsonify({"error": str(e)}), 500
 
 
-# API route for generating an answer based on the query using RAG
-# @app.route('/generate', methods=['POST'])
-# def generate():
-#     try:
-#         data = request.get_json()
-#         prompt = data.get("prompt", "")
-#         if not prompt:
-#             return jsonify({"error": "Prompt is required"}), 400
-#
-#         # Get relevant documents using similarity search
-#         search_results = query_vector_db(prompt)
-#
-#         # Use the RAG model to generate an answer based on the retrieved documents
-#         context = " ".join([result.page_content for result in search_results])
-#         answer = generate_answer(f"Context: {context} Question: {prompt}")
-#
-#         return jsonify({"response": answer})
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
+@app.route('/generate', methods=['POST'])
+def generate():
+    try:
+        data = request.get_json()
+        query_text = data.get("query", "")
+        if not query_text:
+            return jsonify({"error": "Prompt is required"}), 400
+
+        search_results = query_vector_db(query_text)
+
+        context = " ".join([result.page_content for result in search_results])
+        answer = generate_response(context, query_text)
+
+        return jsonify({"response": answer})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
