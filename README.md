@@ -14,9 +14,9 @@ Setup and Running the Project
 
 1. Start QdrantDB
 
-Navigate to the QdrantDBDatastore directory and start the QdrantDB container:
+Navigate to the QdrantDBStore directory and start the QdrantDB container:
 
-cd QdrantDBDatastore
+cd QdrantDBStore
 docker-compose up
 
 2. Start the Flask API Server
