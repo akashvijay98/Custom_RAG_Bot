@@ -3,7 +3,7 @@
 ![HLD](./static/RAGAIBOT.png)
 
 
-Prerequisites
+## Prerequisites
 
 Ensure you have the following installed before proceeding:
 
@@ -15,7 +15,7 @@ Flask
 
 Postman
 
-Setup and Running the Project
+## Setup and Running the Project
 
 1. Start QdrantDB
 
@@ -43,7 +43,7 @@ with the following JSON raw payload:
   "query": "give me porche info"
 }
 
-Project Structure
+## Project Structure
 
 RAGBot/
 │-- QdrantDBDatastore/     # Directory containing QdrantDB setup
@@ -52,7 +52,7 @@ RAGBot/
 │   │-- requirements.txt   # Python dependencies
 │-- README.md              # Project documentation
 
-Dependencies
+## Dependencies
 
 To install the required dependencies for the Flask API server:
 pip install -r Server/requirements.txt
