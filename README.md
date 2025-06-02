@@ -1,3 +1,8 @@
+## High Level Design
+
+![HLD](./static/RAGAIBOT.png)
+
+
 Prerequisites
 
 Ensure you have the following installed before proceeding:
