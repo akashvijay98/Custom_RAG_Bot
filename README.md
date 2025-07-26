@@ -26,6 +26,18 @@ docker-compose up
 
 2. Start the Flask API Server
 
+   **Create a virtual environment** 
+     python -m venv venv
+
+    venv\Scripts\activate
+
+   **install requirements**
+   pip install -r requirements.txt
+
+   **run server**
+   cd Server
+   python app.py
+
 Navigate to the Server directory and run the Flask application:
 
 cd Server
