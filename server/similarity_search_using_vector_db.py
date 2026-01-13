@@ -1,70 +1,97 @@
-import os
+import boto3
+from langchain_aws import ChatBedrock, BedrockEmbeddings
+from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from langchain.vectorstores import Qdrant
-from sentence_transformers import SentenceTransformer
-from transformers import GPT2LMHeadModel, GPT2Tokenizer
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
 
-import torch
-
-# Constants
-QDRANT_URL = "localhost"
-QDRANT_PORT = 6333
+# Configuration
+QDRANT_URL = "http://localhost:6333"
 COLLECTION_NAME = "pdf_embeddings"
+AWS_REGION = "us-east-2"
 
-# Initialize the Qdrant client
-qdrant_client = QdrantClient(QDRANT_URL, port=QDRANT_PORT)
-
-# Setup Hugging Face RAG model, tokenizer, and retriever
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-generator_model_name = "gpt2"
-tokenizer = GPT2Tokenizer.from_pretrained(generator_model_name)
-generator_model = GPT2LMHeadModel.from_pretrained(generator_model_name)
-
-
-# Create the Qdrant vector store, use LangChain with embeddings
-vector_store = Qdrant(
-    client=qdrant_client,
-    collection_name=COLLECTION_NAME,
-    embeddings=embedding_model.encode
+# Initialize Embeddings
+embeddings = BedrockEmbeddings(
+    model_id="amazon.titan-embed-text-v1",
+    region_name=AWS_REGION
 )
 
+# Connect to Vector DB
+client = QdrantClient(url=QDRANT_URL)
+vector_store = QdrantVectorStore(
+    client=client,
+    collection_name=COLLECTION_NAME,
+    embeddings=embeddings,
+)
 
-def query_vector_db(query: str, top_k: int = 3):
-    """Queries the Qdrant vector database and gets the most relevant documents based on the query."""
+# Define Tools
+@tool
+def search_knowledge_base(query: str) -> str:
+    """
+    Search the Porsche knowledge base for car specifications, features, and brochure details.
+    Useful for looking up specific facts before answering a question.
+    """
+    try:
+        docs = vector_store.similarity_search(query, k=4)
+        if not docs:
+            return "No relevant information found in the knowledge base."
+        return "\n\n".join([d.page_content for d in docs])
+    except Exception as e:
+        return f"Error searching knowledge base: {str(e)}"
 
-    # Perform a similarity search (embeddings will be generated internally)
-    search_results = vector_store.similarity_search(query, k=top_k)
+tools = [search_knowledge_base]
 
-    return search_results
+# Initialize LLM
+llm = ChatBedrock(
+    model_id="us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+    region_name=AWS_REGION,
+    model_kwargs={"temperature": 0.0}
+)
 
+# Create Agent
+prompt = ChatPromptTemplate.from_messages([
+    ("system", """You are a helpful Porsche assistant with access to detailed brochure information. 
 
-def generate_response(context: str, prompt: str, max_length: int = 512):
-    """Generates a response using GPT-2 based on the provided context."""
+When answering questions:
+1. Use the search_knowledge_base tool to find relevant information
+2. For complex questions (comparisons, multi-part queries), break them down and search multiple times
+3. Synthesize information from multiple searches when needed
+4. Be specific and cite details from the brochures
+5. If information isn't found, say so clearly"""),
+    ("placeholder", "{chat_history}"),
+    ("human", "{input}"),
+    ("placeholder", "{agent_scratchpad}"),
+])
 
-    input_text = f"Context: {context}\n\nQuestion: {prompt}\n\nAnswer:"
-    input_ids = tokenizer.encode(input_text, return_tensors="pt")
+agent =  create_tool_calling_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(
+    agent=agent, 
+    tools=tools, 
+    verbose=True,
+    max_iterations=5,
+    max_execution_time=60,
+    handle_parsing_errors=True
+)
 
-    if input_ids.shape[1] > max_length:
-        input_ids = input_ids[:, -max_length:]
+def agentic_response(query_text: str) -> str:
+    """
+    Run the agentic workflow with multi-step reasoning
+    Returns: str - Final answer from the agent
+    """
+    try:
+        result = agent_executor.invoke({"input": query_text})
+        return result["output"]
+    except Exception as e:
+        return f"Error running agent: {str(e)}"
 
-    output_ids = generator_model.generate(input_ids, max_length=max_length, temperature=0.7, top_p=0.9)
-    response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-
-    return response
-
-
-# Main function to query and get the response
-if __name__ == "__main__":
-    query = input("Enter your query: ")  # Prompt the user for input query
-    search_results = query_vector_db(query)
-
-    # Print the relevant documents with headings and spacing
-    print("\n## Relevant Documents:")
-    for i, result in enumerate(search_results, start=1):
-        print(f"\n### Document {i}")
-        print("#### Metadata")
-        for key, value in result.metadata.items():
-            print(f"{key}: {value}")
-        print("\n#### Page Content")
-        print(result.page_content)
+def semantic_similarity_search(query_text: str, k: int = 3):
+    """
+    Direct vector similarity search without agent reasoning
+    Returns: List[Document] - Raw documents from vector store
+    """
+    try:
+        return vector_store.similarity_search(query_text, k=k)
+    except Exception as e:
+        print(f"Search error: {e}")
+        return []
