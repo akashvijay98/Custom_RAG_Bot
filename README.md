@@ -1,6 +1,6 @@
 ## High Level Design
 
-![HLD](./static/RAGAIBOT.png)
+![HLD](./static/RAGBot.png)
 
 
 ## Prerequisites
