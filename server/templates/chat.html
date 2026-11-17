@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RAG Studio · Test your knowledge base</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='chat.css', v='2') }}">
+  <script defer src="{{ url_for('static', filename='chat.js', v='2') }}"></script>
+</head>
+<body>
+<aside>
+  <a class="brand" href="/">R<span>↗</span> <strong>RAG Studio</strong></a>
+  <div class="section-label">WORKSPACE</div>
+  <h2 class="assistant-title">Ask the assistant</h2>
+  <p class="muted">Every question searches the Bedrock knowledge base and your ready catalogues before answering.</p>
+  <button id="clear" class="secondary">＋ New conversation</button>
+  <div class="upload-panel">
+    <div class="section-label">LOCAL CATALOG</div>
+    <h2>Add a brochure</h2>
+    <p class="muted">Upload a PDF to add its evidence to the assistant’s retrieval workflow.</p>
+    <form id="upload-form">
+      <label for="pdf">PDF document</label>
+      <input id="pdf" type="file" accept="application/pdf,.pdf" required>
+      <button id="upload" class="secondary" type="submit">Upload PDF</button>
+    </form>
+    <p id="upload-status" role="status" class="muted"></p>
+  </div>
+  <div class="sidebar-foot">Your documents. Your questions.<br>Evidence you can inspect.</div>
+</aside>
+<main>
+  <header><div><span class="section-label">KNOWLEDGE WORKSPACE</span><h1>Test your RAG</h1></div><span class="badge">Local workspace</span></header>
+  <section id="messages" role="log" aria-label="Conversation" aria-live="polite">
+    <div id="welcome">
+      <div class="spark">✳</div>
+      <h2>Start with a good question.</h2>
+      <p>Explore your brochures, compare details, and see what your knowledge base can answer.</p>
+      <div class="suggestions">
+        <button type="button">What does the brochure say about the 911 Turbo S?</button>
+        <button type="button">Compare the Turbo S and GT3 RS performance.</button>
+        <button type="button">Find details about seat comfort and suspension.</button>
+      </div>
+    </div>
+  </section>
+  <div class="composer-area">
+    <p id="request-status" role="status"></p>
+    <form id="chat-form">
+      <label class="sr-only" for="query">Your question</label>
+      <textarea id="query" rows="2" placeholder="Ask about your documents…" required maxlength="2000"></textarea>
+      <div class="composer-footer"><span>Enter to send · Shift + Enter for a new line</span><button id="send" type="submit">Send ↗</button></div>
+    </form>
+    <p class="footnote">Each question is independent. Conversation history is displayed here but is not sent to the model.</p>
+  </div>
+</main>
+</body>
+</html>

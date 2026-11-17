@@ -1,22 +1,45 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
-import asyncio
-from similarity_search_using_vector_db import semantic_similarity_search, agentic_response
 
 # Initialize the Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+# Local catalog endpoints have no dependency on the legacy Bedrock RAG backend.
+from catalog_api import catalog
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
+app.register_blueprint(catalog)
+
+@app.get('/')
+def chat_ui():
+    return render_template('chat.html')
+
+@app.route('/health', methods=['GET'])
+def health():
+    try:
+        from similarity_search_using_vector_db import backend_status
+
+        backend = backend_status()
+        status = "ok" if backend["collection_exists"] else "degraded"
+        return jsonify({"status": status, "service": "Flask API", "backend": backend}), 200 if status == "ok" else 503
+    except Exception as exc:
+        return jsonify({"status": "unavailable", "service": "Flask API", "error": str(exc)}), 503
+
+
 # API route for similarity search
 @app.route('/similarity_search_query', methods=['POST'])
 def query():
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "A JSON object is required"}), 400
     query_text = data.get("query", "")
 
-    if not query_text:
+    if not isinstance(query_text, str) or not query_text.strip():
         return jsonify({"error": "Query is required"}), 400
+    query_text = query_text.strip()
 
     try:
+        from similarity_search_using_vector_db import semantic_similarity_search
         results = semantic_similarity_search(query_text)
         # Convert LangChain Document objects to JSON-serializable format
         response_data = []
@@ -34,13 +57,17 @@ def query():
 @app.route('/generate', methods=['POST'])
 def generate():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "A JSON object is required"}), 400
         query_text = data.get("query", "")
-        if not query_text:
+        if not isinstance(query_text, str) or not query_text.strip():
             return jsonify({"error": "Prompt is required"}), 400
+        query_text = query_text.strip()
 
         # CALL THE AGENT
         # The agent will perform multi-step reasoning internally
+        from similarity_search_using_vector_db import agentic_response
         answer = agentic_response(query_text)
 
         return jsonify({"response": answer})

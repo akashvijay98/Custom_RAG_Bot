@@ -1,0 +1,6 @@
+# Standalone local ingestion API; no AWS or LangChain required.
+Flask>=3.1,<4
+flask-cors>=5,<7
+qdrant-client>=1.12,<2
+pdfplumber>=0.11,<0.12
+sentence-transformers>=3,<6
